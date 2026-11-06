@@ -14,6 +14,7 @@ ZIP_URL="https://raw.githubusercontent.com/$REPO/main/meuiptv-web.zip"
 
 echo "==> Instalando programas necessários"
 export DEBIAN_FRONTEND=noninteractive
+echo 'DPkg::Lock::Timeout "900";' > /etc/apt/apt.conf.d/99esperar
 apt-get update -qq
 apt-get install -y -qq curl unzip ca-certificates >/dev/null
 if ! command -v node >/dev/null || [ "$(node -e 'console.log(process.versions.node.split(".")[0])')" -lt 16 ]; then
@@ -74,6 +75,13 @@ systemctl restart meuiptv
 
 # Verifica atualizações no GitHub a cada 10 minutos
 echo "*/10 * * * * root /usr/local/bin/meuiptv-atualizar >/dev/null 2>&1" > /etc/cron.d/meuiptv
+
+# Libera a porta 80 no firewall interno (antes da regra que recusa o resto)
+if command -v iptables >/dev/null && ! iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null; then
+  POS=$(iptables -L INPUT --line-numbers -n | awk '/REJECT/{print $1; exit}')
+  if [ -n "$POS" ]; then iptables -I INPUT "$POS" -p tcp --dport 80 -j ACCEPT; else iptables -A INPUT -p tcp --dport 80 -j ACCEPT; fi
+  command -v netfilter-persistent >/dev/null && netfilter-persistent save >/dev/null 2>&1 || true
+fi
 
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then ufw allow 80/tcp >/dev/null; fi
 
